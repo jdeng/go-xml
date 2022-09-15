@@ -3,6 +3,7 @@ package xsd
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -135,7 +136,7 @@ func Normalize(docs ...[]byte) ([]*xmltree.Element, error) {
 func Parse(docs ...[]byte) ([]Schema, error) {
 	var (
 		result = make([]Schema, 0, len(docs))
-		parsed = make(map[string]Schema, len(docs))
+		parsed = make(map[string]*Schema, len(docs))
 		types  = make(map[xml.Name]Type)
 	)
 
@@ -146,16 +147,21 @@ func Parse(docs ...[]byte) ([]Schema, error) {
 
 	for _, root := range schema {
 		tns := root.Attr("", "targetNamespace")
-		s := Schema{TargetNS: tns, Types: make(map[xml.Name]Type)}
+		s, ok := parsed[tns]
+		if !ok {
+			s = &Schema{TargetNS: tns, Types: make(map[xml.Name]Type)}
+		}
 		if err := s.parse(root); err != nil {
 			return nil, err
 		}
+		log.Printf("Parsed: %v %v\n", tns, s)
 		parsed[tns] = s
 	}
 
 	for _, s := range parsed {
 		for _, t := range s.Types {
 			types[XMLName(t)] = t
+			log.Printf("adding: %v\n", XMLName(t))
 		}
 	}
 
@@ -169,7 +175,7 @@ func Parse(docs ...[]byte) ([]Schema, error) {
 			return nil, err
 		}
 		s.propagateMixedAttr()
-		result = append(result, s)
+		result = append(result, *s)
 	}
 	result = append(result, builtinSchema)
 	return result, nil
@@ -512,6 +518,7 @@ func (s *Schema) addElementTypeAliases(root *xmltree.Element, types map[xml.Name
 		}
 		if _, ok := s.Types[name]; !ok {
 			if t, ok := s.lookupType(linkedType(ref), types); !ok {
+				fmt.Printf("Element: %#v in %s\n", el, s.TargetNS)
 				return fmt.Errorf("could not lookup type %s for element %s",
 					el.Prefix(ref), el.Prefix(name))
 			} else {
@@ -1098,12 +1105,23 @@ func (s *Schema) resolvePartialTypes(types map[xml.Name]Type) error {
 }
 
 func (s *Schema) lookupType(name linkedType, ext map[xml.Name]Type) (Type, bool) {
-	if b, err := ParseBuiltin(xml.Name(name)); err == nil {
+	xname := xml.Name(name)
+	if b, err := ParseBuiltin(xname); err == nil {
 		return b, true
 	}
-	if v, ok := ext[xml.Name(name)]; ok {
+	if v, ok := ext[xname]; ok {
 		return v, true
 	}
-	v, ok := s.Types[xml.Name(name)]
-	return v, ok
+	if v, ok := s.Types[xname]; ok {
+		return v, true
+	}
+
+	if xname.Space == "" {
+		xname.Space = "http://www.mismo.org/residential/2009/schemas"
+		if v, ok := ext[xname]; ok {
+			return v, true
+		}
+	}
+
+	return nil, false
 }

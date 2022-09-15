@@ -72,11 +72,12 @@ func ToString(expr ast.Expr) (string, error) {
 // must be of type ast.Expr, and tag must be of type *ast.BasicLit,
 // The number of arguments must be a multiple of 3, or a run-time
 // panic will occur.
-func Struct(args ...ast.Expr) *ast.StructType {
+func Struct(mismoAttrNames []string, args ...ast.Expr) *ast.StructType {
 	fields := new(ast.FieldList)
 	if len(args)%3 != 0 {
 		panic("Number of args to FieldList must be a multiple of 3, got " + strconv.Itoa(len(args)))
 	}
+	var fieldsList, fieldsListCompact []*ast.Field
 	for i := 0; i < len(args); i += 3 {
 		var field ast.Field
 		name, typ, tag := args[i], args[i+1], args[i+2]
@@ -89,7 +90,28 @@ func Struct(args ...ast.Expr) *ast.StructType {
 		if tag != nil {
 			field.Tag = tag.(*ast.BasicLit)
 		}
-		fields.List = append(fields.List, &field)
+		//	fields.List = append(fields.List, &field)
+		fieldsList = append(fieldsList, &field)
+
+		if name != nil && len(mismoAttrNames) > 0 {
+			xname := name.(*ast.Ident).Name
+			var found bool
+			for _, n := range mismoAttrNames {
+				if n == xname {
+					found = true
+					break
+				}
+			}
+			if !found {
+				fieldsListCompact = append(fieldsListCompact, &field)
+			}
+		}
+	}
+	if len(mismoAttrNames) > 0 && len(fieldsList) == len(fieldsListCompact)+len(mismoAttrNames) {
+		fields.List = fieldsListCompact
+		fields.List = append(fields.List, &ast.Field{Type: ast.NewIdent("MISMOAttr")})
+	} else {
+		fields.List = fieldsList
 	}
 	return &ast.StructType{Fields: fields}
 }

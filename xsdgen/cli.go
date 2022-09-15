@@ -62,7 +62,7 @@ func (cfg *Config) GenAST(files ...string) (*ast.File, error) {
 	return code.GenAST()
 }
 
-func (cfg *Config) readFiles(files ...string) ([][]byte,error) {
+func (cfg *Config) readFiles(files ...string) ([][]byte, error) {
 	data := make([][]byte, 0, len(files))
 	for _, filename := range files {
 		b, err := ioutil.ReadFile(filename)
@@ -119,6 +119,8 @@ func (cfg *Config) GenCLI(arguments ...string) error {
 		followImports = fs.Bool("f", false, "follow import statements; load imported references recursively into scope")
 		verbose       = fs.Bool("v", false, "print verbose output")
 		debug         = fs.Bool("vv", false, "print debug output")
+		extns         = fs.String("extns", "", "extension namespace")
+		mav           = fs.String("mav", "", "MISMO attr version: 3 or 4")
 	)
 	fs.Var(&replaceRules, "r", "replacement rule 'regex -> repl' (can be used multiple times)")
 	fs.Var(&xmlns, "ns", "target namespace(s) to generate types for")
@@ -141,6 +143,19 @@ func (cfg *Config) GenCLI(arguments ...string) error {
 	}
 	if *packageName != "" {
 		cfg.Option(PackageName(*packageName))
+	}
+
+	if *extns != "" {
+		cfg.ExtensionMode = true
+		//	cfg.ExtensionNamespace = "http://www.datamodelextension.org/Schema/ULAD"
+		cfg.ExtensionNamespace = *extns
+	}
+
+	switch *mav {
+	case "3.3":
+		cfg.MISMOAttrNames = []string{"SensitiveIndicator", "Label"}
+	case "3.4":
+		cfg.MISMOAttrNames = []string{"DataNotSuppliedReasonType", "DataNotSuppliedReasonTypeAdditionalDescription", "DataNotSuppliedReasonTypeOtherDescription", "SensitiveIndicator", "Label"}
 	}
 
 	file, err := cfg.GenAST(fs.Args()...)

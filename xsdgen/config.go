@@ -16,10 +16,10 @@ import (
 // A Config holds user-defined overrides and filters that are used when
 // generating Go source code from an xsd document.
 type Config struct {
-	logger          Logger
-	loglevel        int
-	namespaces      []string
-	pkgname         string
+	logger     Logger
+	loglevel   int
+	namespaces []string
+	pkgname    string
 	// load xsd imports recursively into memory before parsing
 	followImports   bool
 	preprocessType  typeTransform
@@ -42,6 +42,20 @@ type Config struct {
 	// if populated, only types that are true in this map
 	// will be selected.
 	allowTypes map[xml.Name]bool
+
+	NamespaceMap       map[string]string
+	ExtensionMode      bool
+	ExtensionNamespace string
+	SkipTypes          []string
+	MixedTypes         []MixedType
+
+	MISMOAttrNames []string
+}
+
+type MixedType struct {
+	Type     string
+	BaseType string
+	Name     string
 }
 
 type typeTransform func(xsd.Schema, xsd.Type) xsd.Type
@@ -447,6 +461,7 @@ func (cfg *Config) expr(t xsd.Type) (ast.Expr, error) {
 		}
 		return ex, nil
 	}
+
 	return ast.NewIdent(cfg.public(xsd.XMLName(t))), nil
 }
 
@@ -863,4 +878,14 @@ func (cfg *Config) soapArrayToSlice(s spec) spec {
 	s.methods = append(s.methods, marshal)
 	s.methods = append(s.methods, unmarshal)
 	return s
+}
+
+func (cfg *Config) mapNS(ns string) string {
+	if cfg.NamespaceMap != nil {
+		if t, ok := cfg.NamespaceMap[ns]; ok {
+			return t
+		}
+	}
+
+	return ns
 }

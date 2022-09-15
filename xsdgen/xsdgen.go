@@ -177,6 +177,18 @@ func (cfg *Config) gen(primaries, deps []xsd.Schema) (*Code, error) {
 		types := cfg.flatten(primary.Types)
 		types = cfg.expandComplexTypes(types)
 		for _, t := range types {
+			name := xsd.XMLName(t).Local
+			if strings.HasSuffix(name, "EXTENSION") && !cfg.ExtensionMode {
+				fmt.Printf("Skip: %s\n", name)
+				cfg.SkipTypes = append(cfg.SkipTypes, name)
+				continue
+			}
+
+			ns := xsd.XMLName(t).Space
+			if cfg.ExtensionMode && ns != cfg.ExtensionNamespace {
+				continue
+			}
+
 			specs, err := cfg.genTypeSpec(t)
 			if err != nil {
 				errList = append(errList, fmt.Errorf("gen type %q: %v",
@@ -618,6 +630,8 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 			cfg.debugf("complexType %[1]s extends simpleType %[2]s. Naming"+
 				" the chardata struct field after %[2]s", t.Name.Local, b.Name.Local)
 			fields = append(fields, expr, expr, gen.String(`xml:",chardata"`))
+			fmt.Printf("Mix: %s %#v %s %s\n", t.Name.Local, b.Base.(xsd.Builtin).Name(), b.Name.Local, b.Name.Local)
+			cfg.MixedTypes = append(cfg.MixedTypes, MixedType{Type: t.Name.Local, BaseType: b.Base.(xsd.Builtin).Name().Local, Name: b.Name.Local})
 		case xsd.Builtin:
 			if b == xsd.AnyType {
 				// extending anyType doesn't really make sense, but
@@ -646,6 +660,9 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 				})
 			}
 			fields = append(fields, namegen.unique(name), expr, gen.String(tag))
+			fmt.Printf("Mix: %s %#v\n", t.Name.Local, b.Name())
+			cfg.MixedTypes = append(cfg.MixedTypes, MixedType{Type: t.Name.Local, BaseType: b.Name().Local, Name: "Value"})
+
 		default:
 			panic(fmt.Errorf("%s does not derive from a builtin type", t.Name.Local))
 		}
@@ -684,11 +701,31 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 		if el.Nillable || el.Optional {
 			options = ",omitempty"
 		}
-		tag := fmt.Sprintf(`xml:"%s %s%s"`, el.Name.Space, el.Name.Local, options)
-		base, err := cfg.expr(el.Type)
+		ns := cfg.mapNS(el.Name.Space)
+		if ns != "" {
+			ns += ":"
+		}
+		tag := fmt.Sprintf(`xml:"%s%s%s"`, ns, el.Name.Local, options)
+
+		tb := el.Type
+		if tt, ok := tb.(*xsd.SimpleType); ok {
+			if tt := xsd.Base(tt); tt != nil {
+				tb = tt
+			}
+		}
+		base, err := cfg.expr(tb)
 		if err != nil {
 			return nil, fmt.Errorf("%s element %s: %v", t.Name.Local, el.Name.Local, err)
 		}
+
+		if tt, ok := tb.(*xsd.ComplexType); ok {
+			name := tt.Name.Local
+			if strings.HasPrefix(name, "MISMO") || strings.HasSuffix(name, "EXTENSION") || strings.HasSuffix(name, "Enum") {
+			} else {
+				base = &ast.StarExpr{X: base}
+			}
+		}
+
 		name := namegen.element(el.Name)
 		if el.Wildcard {
 			tag = `xml:",any"`
@@ -739,11 +776,17 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 		}
 		var tag string
 		if qualified {
-			tag = fmt.Sprintf(`xml:"%s %s,attr%s"`, attr.Name.Space, attr.Name.Local, options)
+			ns := cfg.mapNS(attr.Name.Space)
+			if ns != "" {
+				ns += ":"
+			}
+			tag = fmt.Sprintf(`xml:"%s%s,attr%s"`, ns, attr.Name.Local, options)
 		} else {
 			tag = fmt.Sprintf(`xml:"%s,attr%s"`, attr.Name.Local, options)
 		}
-		base, err := cfg.expr(attr.Type)
+
+		tb := attr.Type
+		base, err := cfg.expr(tb)
 		if err != nil {
 			return nil, fmt.Errorf("%s attribute %s: %v", t.Name.Local, attr.Name.Local, err)
 		}
@@ -770,7 +813,7 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 			})
 		}
 	}
-	expr := gen.Struct(fields...)
+	expr := gen.Struct(cfg.MISMOAttrNames, fields...)
 	s := spec{
 		doc:         t.Doc,
 		name:        cfg.public(t.Name),
