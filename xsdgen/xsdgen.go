@@ -371,11 +371,11 @@ func (cfg *Config) expandComplexTypes(types []xsd.Type) []xsd.Type {
 // type that the user wants included in the Go source. In affect, what we
 // want to do is take the linked list:
 //
-// 	t1 -> t2 -> t3 -> builtin
+//	t1 -> t2 -> t3 -> builtin
 //
 // And produce a set of tuples:
 //
-// 	t1 -> builtin, t2 -> builtin, t3 -> builtin
+//	t1 -> builtin, t2 -> builtin, t3 -> builtin
 //
 // This is a heuristic that tends to generate better-looking Go code.
 func (cfg *Config) flatten(types map[xml.Name]xsd.Type) []xsd.Type {
@@ -416,7 +416,15 @@ func dedup(types []xsd.Type) (unique []xsd.Type) {
 
 func (cfg *Config) flatten1(t xsd.Type, push func(xsd.Type), depth int) xsd.Type {
 	const maxDepth = 1000
+
+	//XXX: hack for tuxml
+	name := xsd.XMLName(t).Local
+	if name == "addOnProduct" || strings.HasPrefix(name, "locatorReport") {
+		return t
+	}
+
 	if depth > maxDepth {
+		cfg.debugf("MAXDEPTH: %T(%s)", t, xsd.XMLName(t).Local)
 		return t
 	}
 	switch t := t.(type) {

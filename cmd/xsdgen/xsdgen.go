@@ -19,6 +19,7 @@ func main() {
 		"http://www.datamodelextension.org/Schema/DU":   "DU",
 		"http://www.datamodelextension.org/Schema/LPA":  "LPA",
 		"http://www.datamodelextension.org/Schema/ULDD": "ULDD",
+		"http://www.transunion.com/namespace": "tuxml",
 	}
 
 	cfg.Option(xsdgen.DefaultOptions...)
